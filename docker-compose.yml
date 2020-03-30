@@ -1,0 +1,7 @@
+
+version: '2.3'
+
+services:
+    api-exporter:
+        image: gitlab.com/fsvm88/fitbit-api-exporter:latest
+        container_name: api-exporter
