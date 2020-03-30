@@ -13,7 +13,7 @@ ENV ACCESS_TOKEN=0
 ENV REFRESH_TOKEN=0
 ENV CODE=0
 ENV CALLBACK_URL=http://localhost:8080/
-ENV UNITS=en_GB
+ENV UNITS=None
 
 RUN pip install fitbit
 
