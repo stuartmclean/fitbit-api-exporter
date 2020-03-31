@@ -25,6 +25,21 @@ ACTIVITIES=[
         'veryActiveMinutes'
         ]
 
+ACTIVITY_KEYS=[
+    'activityCalories',
+    'caloriesBMR',
+    'caloriesOut',
+    'distances',
+    'elevation',
+    'fairlyActiveMinutes',
+    'floors',
+    'lightlyActiveMinutes',
+    'marginalCalories',
+    'sedentaryMinutes',
+    'steps',
+    'veryActiveMinutes'
+]
+
 PERIOD_MAPS = {
         1: '1d',
         30: '3m',
@@ -84,9 +99,20 @@ def get_period_for_measurement(ifx_c, key_name):
     return 'default'
 
 def write_activities(ifx_c, act_list):
+    act_list = [x['summary'] for x in act_list
+                if x and x['summary']]
+    datapoints = []
     for one_act in act_list:
-        # TODO
-        pass
+        new_dict = {}
+        for one_key in ACTIVITY_KEYS:
+            if one_key in one_act:
+                new_dict[one_key] = one_act[one_key]
+        if 'distances' in one_act:
+            for dist in one_act['distances']:
+                new_dict['distance-{}'.format(dist['activity'])] = dist['distance']
+        for key, value in new_dict.items():
+            datapoints.append(create_api_datapoint(key, time['dateTime'], value))
+    ifx_c.write_points(datapoints, time_precision='s')
 
 def run_api_poller():
     db_host = try_getenv('DB_HOST')
@@ -126,17 +152,23 @@ def run_api_poller():
 
         all_activities = []
         while cur_ts <= datetime.utcnow():
-            all_activities.append(api_client.activities(date=cur_ts))
+            res_dict = api_client.activities(date=cur_ts)
+            res_dict['summary']['dateTime'] = cur_ts
+            all_activities.append(res_dict)
             call_count += 1
             cur_ts += timedelta(days=1)
-            if call_count >= 150:
+            if call_count > 149:
                 break
-
         write_activities(db_client, all_activities)
-        if call_count > = 150:
+        del all_activities
+
+        if call_count > 149:
             time.sleep(60*60+3)
+            db_client.close()
+            del db_client
+            gc.collect()
             continue
-############ FATTO FINO A QUI
+
         db_client.close()
         del db_client
         gc.collect()
