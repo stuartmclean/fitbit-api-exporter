@@ -4,28 +4,31 @@ import argparse
 import gc
 import logging
 import os
+import sys
 import time
-
 from datetime import datetime, timedelta
+from functools import partial
+
 from dateutil.parser import parse
+
 from fitbit import Fitbit
 from influxdb import InfluxDBClient
 
-ACTIVITIES=[
-        'activityCalories',
-        'caloriesBMR',
-        'caloriesOut',
-        'elevation',
-        'fairlyActiveMinutes',
-        'floors',
-        'lightlyActiveMinutes',
-        'marginalCalories',
-        'sedentaryMinutes',
-        'steps',
-        'veryActiveMinutes'
-        ]
+ACTIVITIES = [
+    'activityCalories',
+    'caloriesBMR',
+    'caloriesOut',
+    'elevation',
+    'fairlyActiveMinutes',
+    'floors',
+    'lightlyActiveMinutes',
+    'marginalCalories',
+    'sedentaryMinutes',
+    'steps',
+    'veryActiveMinutes'
+]
 
-ACTIVITY_KEYS=[
+ACTIVITY_KEYS = [
     'activityCalories',
     'caloriesBMR',
     'caloriesOut',
@@ -41,44 +44,54 @@ ACTIVITY_KEYS=[
 ]
 
 PERIOD_MAPS = {
-        1: '1d',
-        30: '3m',
-        90: '6m',
-        180: '1y',
-        365: 'max',
-        9999: 'max'
-        }
+    1: '1d',
+    30: '3m',
+    90: '6m',
+    180: '1y',
+    365: 'max',
+    9999: 'max'
+}
 
 logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-def try_getenv(var_name):
-    my_var = os.environ(var_name)
+
+def try_cast_to_int(in_var):
     try:
-        my_var = int(my_var)
-    except Exception:
-        pass
+        return int(in_var)
+    except:
+        return in_var
+
+
+def try_getenv(var_name, default_var=None):
+    my_var = os.environ(var_name)
+    my_var = try_cast_to_int(my_var)
     if not my_var:
+        if default_var:
+            return default_var
         errstr = 'Invalid or missing value provided for: {}'.format(var_name)
         raise ValueError(errstr)
     return my_var
 
+
 def create_api_datapoint(measurement, time, fields, tag="data_dump"):
     return {
-            "measurement": measurement,
-            "tags": {
-                "imported_from": "API"
-                },
-            "time": time,
-            "fields": fields
-            }
+        "measurement": measurement,
+        "tags": {
+            "imported_from": "API"
+        },
+        "time": time,
+        "fields": fields
+    }
+
 
 def get_last_timestamp_for_measurement(ifx_c, key_name):
     res = ifx_c.query('SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;')
     if res:
         return parse(list(res.get_points(key_name))[0]['time'], ignoretz=True)
     return datetime.fromtimestamp(0)
+
 
 def get_period_for_measurement(ifx_c, key_name):
     last_record_ts = get_last_timestamp_for_measurement(ifx_c, key_name)
@@ -98,6 +111,7 @@ def get_period_for_measurement(ifx_c, key_name):
         return 'inf'
     return 'default'
 
+
 def write_activities(ifx_c, act_list):
     act_list = [x['summary'] for x in act_list
                 if x and x['summary']]
@@ -109,44 +123,118 @@ def write_activities(ifx_c, act_list):
                 new_dict[one_key] = one_act[one_key]
         if 'distances' in one_act:
             for dist in one_act['distances']:
-                new_dict['distance-{}'.format(dist['activity'])] = dist['distance']
+                new_dict['distance-{}'.format(dist['activity'])
+                         ] = dist['distance']
         for key, value in new_dict.items():
-            datapoints.append(create_api_datapoint(key, time['dateTime'], value))
+            datapoints.append(create_api_datapoint(
+                key, time['dateTime'], value))
     ifx_c.write_points(datapoints, time_precision='s')
 
+
+def save_var(folder, fname, value):
+    with open(os.path.join(folder, fname), 'w') as out_f:
+        out_f.write(value)
+
+
+def load_var(folder, fname, fpath):
+    with open(os.path.join(folder, fname), 'r') as in_f:
+        return in_f.read()
+
+
+def write_updated_credentials(cfg_path, new_info):
+    with open(os.path.join(cfg_path, 'access_token'), 'w') as out_f:
+        out_f.write(new_info['access_token'])
+    with open(os.path.join(cfg_path, 'refresh_token'), 'w') as out_f:
+        out_f.write(new_info['refresh_token'])
+    with open(os.path.join(cfg_path, 'expires_at'), 'w') as out_f:
+        out_f.write(new_info['expires_in'])
+
+
 def run_api_poller():
+    cfg_path = try_getenv('CONFIG_PATH')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
     db_password = try_getenv('DB_PASSWORD')
     db_name = try_getenv('DB_NAME')
-    client_id = try_getenv('CLIENT_ID')
-    client_secret = try_getenv('CLIENT_SECRET')
-    access_token = try_getenv('ACCESS_TOKEN')
-    refresh_token = try_getenv('REFRESH_TOKEN')
+    client_id = None
+    client_secret = None
+    access_token = None
+    refresh_token = None
+
     redirect_url = try_getenv('CALLBACK_URL')
-    code = try_getenv('CODE')
+    expires_at = try_getenv('EXPIRES_AT')
     units = try_getenv('UNITS', 'it_IT')
 
-    logger.debug("client_id: %s, client_secret: %s, access_token: %s, refresh_token: %s", client_id, client_secret, access_token, refresh_token)
+    if os.path.isfile(os.path.join(cfg_path, 'client_id')):
+        client_id = load_var(cfg_path, 'client_id')
+    else:
+        client_id = try_getenv('CLIENT_ID')
+        save_var(cfg_path, 'client_id', client_id)
+
+    if os.path.isfile(os.path.join(cfg_path, 'client_secret')):
+        client_secret = load_var(cfg_path, 'client_secret')
+    else:
+        client_secret = try_getenv('CLIENT_SECRET')
+        save_var(cfg_path, 'client_secret', client_secret)
+
+    if os.path.isfile(os.path.join(cfg_path, 'access_token')):
+        access_token = load_var(cfg_path, 'access_token')
+    else:
+        access_token = try_getenv('ACCESS_TOKEN')
+        save_var(cfg_path, 'access_token', access_token)
+
+    if os.path.isfile(os.path.join(cfg_path, 'refresh_token')):
+        refresh_token = load_var(cfg_path, 'refresh_token')
+    else:
+        refresh_token = try_getenv('REFRESH_TOKEN')
+        save_var(cfg_path, 'refresh_token', refresh_token)
+
+    if os.path.isfile(os.path.join(cfg_path, 'expires_at')):
+        expires_at = try_cast_to_int(load_var(cfg_path, 'expires_at'))
+    else:
+        expires_at = try_cast_to_int(try_getenv('EXPIRES_AT'))
+        save_var(cfg_path, 'expires_at', expires_at)
+
+    logger.debug("client_id: %s, client_secret: %s, access_token: %s, refresh_token: %s",
+                 client_id, client_secret, access_token, refresh_token)
+
+    if not client_id:
+        logging.critical("client_id missing, aborting!")
+        sys.exit(1)
+    if not client_secret:
+        logging.critical("client_secret missing, aborting!")
+        sys.exit(1)
+    if not access_token:
+        logging.critical("access_token missing, aborting!")
+        sys.exit(1)
+    if not refresh_token:
+        logging.critical("refresh_token missing, aborting!")
+        sys.exit(1)
+    if not expires_at:
+        logging.critical("expires_at missing, aborting!")
+        sys.exit(1)
 
     api_client = Fitbit(
-            client_id=client_id,
-            client_secret=client_secret,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            redirect_uri=redirect_url,
-            system=units
-            )
+        client_id=client_id,
+        client_secret=client_secret,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        redirect_uri=redirect_url,
+        refresh_cb=partial(write_updated_credentials, cfg_path),
+        system=Fitbit.METRIC
+    )
     while True:
         call_count = 0
         # Get an influxDB client connection
-        db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+        db_client = InfluxDBClient(
+            db_host, db_port, db_user, db_password, db_name)
         db_client.create_database(db_name)
 
         timestamps = []
         for act in ACTIVITIES:
-            timestamps.append(get_last_timestamp_for_measurement(db_client, act))
+            timestamps.append(
+                get_last_timestamp_for_measurement(db_client, act))
         ts_max = max(timestamps)
         cur_ts = ts_max
 
