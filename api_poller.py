@@ -142,12 +142,9 @@ def load_var(folder, fname, fpath):
 
 
 def write_updated_credentials(cfg_path, new_info):
-    with open(os.path.join(cfg_path, 'access_token'), 'w') as out_f:
-        out_f.write(new_info['access_token'])
-    with open(os.path.join(cfg_path, 'refresh_token'), 'w') as out_f:
-        out_f.write(new_info['refresh_token'])
-    with open(os.path.join(cfg_path, 'expires_at'), 'w') as out_f:
-        out_f.write(new_info['expires_in'])
+    save_var(cfg_path, 'access_token', new_info['access_token'])
+    save_var(cfg_path, 'refresh_token', new_info['refresh_token'])
+    save_var(cfg_path, 'expires_at', new_info['expires_in'])
 
 
 def run_api_poller():
