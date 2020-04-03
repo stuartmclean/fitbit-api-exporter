@@ -5,3 +5,21 @@ services:
     api-exporter:
         image: gitlab.com/fsvm88/fitbit-api-exporter:latest
         container_name: api-exporter
+        volumes:
+            - ${PWD}/docker_config:/config
+        depends_on:
+            - influxdb
+        environment:
+            - CONFIG_PATH: /config
+            - CLIENT_ID: ''
+            - CLIENT_SECRET: ''
+            - ACCESS_TOKEN: ''
+            - REFRESH_TOKEN: ''
+            - CALLBACK_URL: ''
+    influxdb:
+        image: influxdb:1.7.10
+        container_name: influxdb
+        volumes:
+            - ${PWD}/docker_influx:/var/lib/influxdb
+        ports:
+            - "127.0.0.1:8086:8086"
