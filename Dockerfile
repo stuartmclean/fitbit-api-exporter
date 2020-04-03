@@ -15,7 +15,7 @@ ENV EXPIRES_AT=0
 ENV CALLBACK_URL=http://localhost:8080/
 ENV UNITS=None
 
-RUN pip install fitbit
+RUN pip install fitbit influxdb
 
 ADD api_poller.py /
 
