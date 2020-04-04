@@ -65,7 +65,7 @@ def try_cast_to_int(in_var):
 
 
 def try_getenv(var_name, default_var=None):
-    my_var = os.environ(var_name)
+    my_var = os.environ.get(var_name)
     my_var = try_cast_to_int(my_var)
     if not my_var:
         if default_var:
@@ -86,11 +86,12 @@ def create_api_datapoint(measurement, time, fields, tag="data_dump"):
     }
 
 
-def get_last_timestamp_for_measurement(ifx_c, key_name):
-    res = ifx_c.query('SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;')
+def get_last_timestamp_for_measurement(ifx_c, key_name, min_ts=0):
+    res = ifx_c.query(
+        'SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;'.format(key_name))
     if res:
         return parse(list(res.get_points(key_name))[0]['time'], ignoretz=True)
-    return datetime.fromtimestamp(0)
+    return datetime.fromtimestamp(min_ts)
 
 
 def get_period_for_measurement(ifx_c, key_name):
@@ -136,7 +137,7 @@ def save_var(folder, fname, value):
         out_f.write(value)
 
 
-def load_var(folder, fname, fpath):
+def load_var(folder, fname):
     with open(os.path.join(folder, fname), 'r') as in_f:
         return in_f.read()
 
@@ -144,7 +145,7 @@ def load_var(folder, fname, fpath):
 def write_updated_credentials(cfg_path, new_info):
     save_var(cfg_path, 'access_token', new_info['access_token'])
     save_var(cfg_path, 'refresh_token', new_info['refresh_token'])
-    save_var(cfg_path, 'expires_at', new_info['expires_in'])
+    save_var(cfg_path, 'expires_at', str(new_info['expires_in']))
 
 
 def run_api_poller():
@@ -191,7 +192,7 @@ def run_api_poller():
         expires_at = try_cast_to_int(load_var(cfg_path, 'expires_at'))
     else:
         expires_at = try_cast_to_int(try_getenv('EXPIRES_AT'))
-        save_var(cfg_path, 'expires_at', expires_at)
+        save_var(cfg_path, 'expires_at', (expires_at))
 
     logger.debug("client_id: %s, client_secret: %s, access_token: %s, refresh_token: %s",
                  client_id, client_secret, access_token, refresh_token)
@@ -208,9 +209,6 @@ def run_api_poller():
     if not refresh_token:
         logging.critical("refresh_token missing, aborting!")
         sys.exit(1)
-    if not expires_at:
-        logging.critical("expires_at missing, aborting!")
-        sys.exit(1)
 
     api_client = Fitbit(
         client_id=client_id,
@@ -221,6 +219,12 @@ def run_api_poller():
         refresh_cb=partial(write_updated_credentials, cfg_path),
         system=Fitbit.METRIC
     )
+    user_profile = api_client.user_profile_get()
+    member_since = user_profile.get(
+        'user', {}).get('memberSince', '1970-01-01')
+    member_since_ts = parse(member_since, ignoretz=True).timestamp()
+    logger.info('User is member since: %s (ts: %s)',
+                member_since, member_since_ts)
     while True:
         call_count = 0
         # Get an influxDB client connection
@@ -231,7 +235,7 @@ def run_api_poller():
         timestamps = []
         for act in ACTIVITIES:
             timestamps.append(
-                get_last_timestamp_for_measurement(db_client, act))
+                get_last_timestamp_for_measurement(db_client, act, member_since_ts))
         ts_max = max(timestamps)
         cur_ts = ts_max
 
@@ -242,12 +246,12 @@ def run_api_poller():
             all_activities.append(res_dict)
             call_count += 1
             cur_ts += timedelta(days=1)
-            if call_count > 149:
+            if call_count > 1:
                 break
         write_activities(db_client, all_activities)
         del all_activities
 
-        if call_count > 149:
+        if call_count > 1:
             time.sleep(60*60+3)
             db_client.close()
             del db_client
