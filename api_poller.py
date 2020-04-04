@@ -75,14 +75,16 @@ def try_getenv(var_name, default_var=None):
     return my_var
 
 
-def create_api_datapoint(measurement, time, fields, tag="data_dump"):
+def create_api_datapoint(measurement, time, field_val, tag="data_dump"):
+    if not field_val:
+        field_val = 0.0
     return {
         "measurement": measurement,
         "tags": {
             "imported_from": "API"
         },
         "time": time,
-        "fields": fields
+        "fields": {'value': field_val}
     }
 
 
@@ -128,7 +130,8 @@ def write_activities(ifx_c, act_list):
                          ] = dist['distance']
         for key, value in new_dict.items():
             datapoints.append(create_api_datapoint(
-                key, time['dateTime'], value))
+                key, one_act['dateTime'], value))
+    logger.debug('Going to write datapoints: %s', datapoints)
     ifx_c.write_points(datapoints, time_precision='s')
 
 
