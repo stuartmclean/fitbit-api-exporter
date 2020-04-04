@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import argparse
+# pylint: disable=missing-docstring
+
 import gc
 import logging
 import os
@@ -10,7 +11,6 @@ from datetime import datetime, timedelta
 from functools import partial
 
 from dateutil.parser import parse
-
 from fitbit import Fitbit
 from influxdb import InfluxDBClient
 
@@ -53,14 +53,14 @@ PERIOD_MAPS = {
 }
 
 logging.basicConfig()
-logger = logging.getLogger()
+logger = logging.getLogger()  # pylint: disable=invalid-name
 logger.setLevel(logging.DEBUG)
 
 
 def try_cast_to_int(in_var):
     try:
         return int(in_var)
-    except:
+    except Exception:
         return in_var
 
 
@@ -75,22 +75,19 @@ def try_getenv(var_name, default_var=None):
     return my_var
 
 
-def create_api_datapoint(measurement, time, field_val, tag="data_dump"):
+def create_api_datapoint(measurement, ftime, field_val):
     if not field_val:
         field_val = 0.0
     return {
         "measurement": measurement,
-        "tags": {
-            "imported_from": "API"
-        },
-        "time": time,
+        "tags": {"imported_from": "API"},
+        "time": ftime,
         "fields": {'value': field_val}
     }
 
 
 def get_last_timestamp_for_measurement(ifx_c, key_name, min_ts=0):
-    res = ifx_c.query(
-        'SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;'.format(key_name))
+    res = ifx_c.query('SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;'.format(key_name))
     if res:
         return parse(list(res.get_points(key_name))[0]['time'], ignoretz=True)
     return datetime.fromtimestamp(min_ts)
@@ -116,8 +113,7 @@ def get_period_for_measurement(ifx_c, key_name):
 
 
 def write_activities(ifx_c, act_list):
-    act_list = [x['summary'] for x in act_list
-                if x and x['summary']]
+    act_list = [x['summary'] for x in act_list if x and x['summary']]
     datapoints = []
     for one_act in act_list:
         new_dict = {}
@@ -126,11 +122,9 @@ def write_activities(ifx_c, act_list):
                 new_dict[one_key] = one_act[one_key]
         if 'distances' in one_act:
             for dist in one_act['distances']:
-                new_dict['distance-{}'.format(dist['activity'])
-                         ] = dist['distance']
+                new_dict['distance-{}'.format(dist['activity'])] = dist['distance']
         for key, value in new_dict.items():
-            datapoints.append(create_api_datapoint(
-                key, one_act['dateTime'], value))
+            datapoints.append(create_api_datapoint(key, one_act['dateTime'], value))
     logger.debug('Going to write datapoints: %s', datapoints)
     ifx_c.write_points(datapoints, time_precision='s')
 
@@ -223,22 +217,22 @@ def run_api_poller():
         system=Fitbit.METRIC
     )
     user_profile = api_client.user_profile_get()
-    member_since = user_profile.get(
-        'user', {}).get('memberSince', '1970-01-01')
+    member_since = user_profile.get('user', {}).get('memberSince', '1970-01-01')
     member_since_ts = parse(member_since, ignoretz=True).timestamp()
-    logger.info('User is member since: %s (ts: %s)',
-                member_since, member_since_ts)
+    logger.info('User is member since: %s (ts: %s)', member_since, member_since_ts)
+    cur_day = datetime.utcnow()
     while True:
+        if int((datetime.utcnow() - cur_day) / timedelta(days=1)) > 1:
+            cur_day = datetime.utcnow()
+
         call_count = 0
         # Get an influxDB client connection
-        db_client = InfluxDBClient(
-            db_host, db_port, db_user, db_password, db_name)
+        db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
         db_client.create_database(db_name)
 
         timestamps = []
         for act in ACTIVITIES:
-            timestamps.append(
-                get_last_timestamp_for_measurement(db_client, act, member_since_ts))
+            timestamps.append(get_last_timestamp_for_measurement(db_client, act, member_since_ts))
         ts_max = max(timestamps)
         cur_ts = ts_max
 
