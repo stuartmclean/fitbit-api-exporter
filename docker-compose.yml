@@ -9,13 +9,18 @@ services:
             - ${PWD}/docker_config:/config
         depends_on:
             - influxdb
+        networks:
+            - fitbit-net
         environment:
-            - CONFIG_PATH: /config
-            - CLIENT_ID: ''
-            - CLIENT_SECRET: ''
-            - ACCESS_TOKEN: ''
-            - REFRESH_TOKEN: ''
-            - CALLBACK_URL: ''
+            - CONFIG_PATH=${CONFIG_PATH}
+            - DB_HOST=${DB_HOST}
+            - CLIENT_ID=${CLIENT_ID}
+            - CLIENT_SECRET=${CLIENT_SECRET}
+            - ACCESS_TOKEN=${ACCESS_TOKEN}
+            - REFRESH_TOKEN=${REFRESH_TOKEN}
+            - CALLBACK_URL=${CALLBACK_URL}
+            - EXPIRES_AT=${EXPIRES_AT}
+        restart: always
     influxdb:
         image: influxdb:1.7.10
         container_name: influxdb
@@ -23,3 +28,11 @@ services:
             - ${PWD}/docker_influx:/var/lib/influxdb
         ports:
             - "127.0.0.1:8086:8086"
+        networks:
+            - fitbit-net
+        restart: always
+
+networks:
+    fitbit-net:
+        driver: bridge
+        name: fitbit-net
