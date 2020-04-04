@@ -1,4 +1,4 @@
 secrets
-docker_config
-docker_influxdb
+docker_config/
+docker_influx/
 .env
