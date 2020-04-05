@@ -32,7 +32,6 @@ ACTIVITY_KEYS = [
     'activityCalories',
     'caloriesBMR',
     'caloriesOut',
-    'distances',
     'elevation',
     'fairlyActiveMinutes',
     'floors',
@@ -78,6 +77,10 @@ def try_getenv(var_name, default_var=None):
 def create_api_datapoint(measurement, ftime, field_val):
     if not field_val:
         field_val = 0.0
+    try:
+        field_val = float(field_val)
+    except Exception:
+        pass
     return {
         "measurement": measurement,
         "tags": {"imported_from": "API"},
@@ -139,6 +142,12 @@ def load_var(folder, fname):
         return in_f.read()
 
 
+def try_load_var(folder, fname):
+    if os.path.isfile(os.path.join(folder, fname)):
+        return load_var(folder, fname)
+    return None
+
+
 def write_updated_credentials(cfg_path, new_info):
     save_var(cfg_path, 'access_token', new_info['access_token'])
     save_var(cfg_path, 'refresh_token', new_info['refresh_token'])
@@ -147,52 +156,42 @@ def write_updated_credentials(cfg_path, new_info):
 
 def run_api_poller():
     cfg_path = try_getenv('CONFIG_PATH')
+    earliest_day_requested = try_load_var(cfg_path, 'earliest_day_requested')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
     db_password = try_getenv('DB_PASSWORD')
     db_name = try_getenv('DB_NAME')
-    client_id = None
-    client_secret = None
-    access_token = None
-    refresh_token = None
-
     redirect_url = try_getenv('CALLBACK_URL')
-    expires_at = try_getenv('EXPIRES_AT')
     units = try_getenv('UNITS', 'it_IT')
 
-    if os.path.isfile(os.path.join(cfg_path, 'client_id')):
-        client_id = load_var(cfg_path, 'client_id')
-    else:
+    # These are required vars, that we first  try to load from file
+    client_id = try_load_var(cfg_path, 'client_id')
+    client_secret = try_load_var(cfg_path, 'client_secret')
+    access_token = try_load_var(cfg_path, 'access_token')
+    refresh_token = try_load_var(cfg_path, 'refresh_token')
+    expires_at = try_load_var(cfg_path, 'expires_at')
+
+    # If any of the required vars is not in file, try to read from env
+    # If read, save
+    if not client_id:
         client_id = try_getenv('CLIENT_ID')
         save_var(cfg_path, 'client_id', client_id)
-
-    if os.path.isfile(os.path.join(cfg_path, 'client_secret')):
-        client_secret = load_var(cfg_path, 'client_secret')
-    else:
+    if not client_secret:
         client_secret = try_getenv('CLIENT_SECRET')
         save_var(cfg_path, 'client_secret', client_secret)
-
-    if os.path.isfile(os.path.join(cfg_path, 'access_token')):
-        access_token = load_var(cfg_path, 'access_token')
-    else:
+    if not access_token:
         access_token = try_getenv('ACCESS_TOKEN')
         save_var(cfg_path, 'access_token', access_token)
-
-    if os.path.isfile(os.path.join(cfg_path, 'refresh_token')):
-        refresh_token = load_var(cfg_path, 'refresh_token')
-    else:
+    if not refresh_token:
         refresh_token = try_getenv('REFRESH_TOKEN')
         save_var(cfg_path, 'refresh_token', refresh_token)
-
-    if os.path.isfile(os.path.join(cfg_path, 'expires_at')):
-        expires_at = try_cast_to_int(load_var(cfg_path, 'expires_at'))
-    else:
+    if not expires_at:
         expires_at = try_cast_to_int(try_getenv('EXPIRES_AT'))
-        save_var(cfg_path, 'expires_at', (expires_at))
+        save_var(cfg_path, 'expires_at', str(expires_at))
 
-    logger.debug("client_id: %s, client_secret: %s, access_token: %s, refresh_token: %s",
-                 client_id, client_secret, access_token, refresh_token)
+    logger.debug("client_id: %s, client_secret: %s, access_token: %s, refresh_token: %s, expires_at: %s",
+                 client_id, client_secret, access_token, refresh_token, expires_at)
 
     if not client_id:
         logging.critical("client_id missing, aborting!")
@@ -216,49 +215,52 @@ def run_api_poller():
         refresh_cb=partial(write_updated_credentials, cfg_path),
         system=Fitbit.METRIC
     )
+
     user_profile = api_client.user_profile_get()
+    api_call_count = 1
+
     member_since = user_profile.get('user', {}).get('memberSince', '1970-01-01')
     member_since_ts = parse(member_since, ignoretz=True).timestamp()
     logger.info('User is member since: %s (ts: %s)', member_since, member_since_ts)
-    cur_day = datetime.utcnow()
-    while True:
-        if int((datetime.utcnow() - cur_day) / timedelta(days=1)) > 1:
-            cur_day = datetime.utcnow()
 
-        call_count = 0
+    cur_day = datetime.utcnow()
+    day_to_request = cur_day
+    #next_sleep = (60*60+3)
+    next_sleep = 1
+    db_client = None
+
+    while True:
+        if db_client:
+            db_client.close()
+            del db_client
+        gc.collect()
+        logger.info('Sleeping for: %s', next_sleep)
+        time.sleep(next_sleep)
         # Get an influxDB client connection
         db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
         db_client.create_database(db_name)
 
-        timestamps = []
-        for act in ACTIVITIES:
-            timestamps.append(get_last_timestamp_for_measurement(db_client, act, member_since_ts))
-        ts_max = max(timestamps)
-        cur_ts = ts_max
+        if int((datetime.utcnow() - cur_day) / timedelta(days=1)) >= 1:
+            cur_day = datetime.utcnow()
+
+        logger.warning('Current day: %s', cur_day)
 
         all_activities = []
-        while cur_ts <= datetime.utcnow():
-            res_dict = api_client.activities(date=cur_ts)
-            res_dict['summary']['dateTime'] = cur_ts
+        while True:
+            res_dict = api_client.activities(date=cur_day)
+            res_dict['summary']['dateTime'] = cur_day
             all_activities.append(res_dict)
-            call_count += 1
-            cur_ts += timedelta(days=1)
-            if call_count > 1:
+            api_call_count += 1
+            cur_day -= timedelta(days=1)
+            if api_call_count > 2:
                 break
         write_activities(db_client, all_activities)
+        logger.info('Written activities: %s', all_activities)
         del all_activities
+        sys.exit(0)
 
-        if call_count > 1:
-            time.sleep(60*60+3)
-            db_client.close()
-            del db_client
-            gc.collect()
+        if api_call_count > 1:
             continue
-
-        db_client.close()
-        del db_client
-        gc.collect()
-        time.sleep(60*60+3)
 
 
 if __name__ == "__main__":
