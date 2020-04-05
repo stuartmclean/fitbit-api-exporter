@@ -20,7 +20,6 @@ services:
             - REFRESH_TOKEN=${REFRESH_TOKEN}
             - CALLBACK_URL=${CALLBACK_URL}
             - EXPIRES_AT=${EXPIRES_AT}
-        restart: always
     influxdb:
         image: influxdb:1.7.10
         container_name: influxdb
