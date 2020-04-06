@@ -24,6 +24,7 @@ services:
         image: influxdb:1.7.10
         container_name: influxdb
         volumes:
+            - ${PWD}/influxdb.conf:/etc/influxdb/influxdb.conf
             - ${PWD}/docker_influx:/var/lib/influxdb
         ports:
             - "127.0.0.1:8086:8086"
