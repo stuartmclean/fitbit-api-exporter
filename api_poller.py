@@ -2,7 +2,6 @@
 
 # pylint: disable=missing-docstring
 
-import gc
 import logging
 import os
 import sys
@@ -12,7 +11,47 @@ from functools import partial
 
 from dateutil.parser import parse
 from fitbit import Fitbit
+from fitbit.exceptions import HTTPServerError, HTTPTooManyRequests, Timeout
 from influxdb import InfluxDBClient
+
+API_SUPPORTED_QUERIES = [
+    'activities',
+    'body',
+    'bp',
+    'foods_log',
+    'foods_log_water',
+    'glucose'
+    'heart',
+    'sleep'
+]
+
+TIME_SERIES = {
+    'activities': [
+        'activityCalories',
+        'calories',
+        'caloriesBMR',
+        'distance',
+        'elevation',
+        'floors',
+        'minutesFairlyActive',
+        'minutesLightlyActive',
+        'minutesSedentary',
+        'minutesVeryActive',
+        'steps'
+    ],
+    'activities_tracker': [
+        'activityCalories',
+        'calories',
+        'distance',
+        'elevation',
+        'floors',
+        'minutesFairlyActive',
+        'minutesLightlyActive',
+        'minutesSedentary',
+        'minutesVeryActive',
+        'steps'
+    ]
+}
 
 ACTIVITIES = [
     'activityCalories',
@@ -51,6 +90,8 @@ PERIOD_MAPS = {
     9999: 'max'
 }
 
+REQUEST_INTERVAL = timedelta(days=127)
+
 logging.basicConfig()
 logger = logging.getLogger()  # pylint: disable=invalid-name
 logger.setLevel(logging.DEBUG)
@@ -74,62 +115,35 @@ def try_getenv(var_name, default_var=None):
     return my_var
 
 
-def create_api_datapoint(measurement, ftime, field_val):
-    if not field_val:
-        field_val = 0.0
+def create_api_datapoint_meas_series(measurement, series, value, in_dt):
+    if not value:
+        value = 0.0
     try:
-        field_val = float(field_val)
+        value = float(value)
     except Exception:
         pass
     return {
         "measurement": measurement,
         "tags": {"imported_from": "API"},
-        "time": ftime,
-        "fields": {'value': field_val}
+        "time": in_dt,
+        "fields": {series: value}
     }
 
 
-def get_last_timestamp_for_measurement(ifx_c, key_name, min_ts=0):
-    res = ifx_c.query('SELECT last(*) FROM {} ORDER BY time DESC LIMIT 1;'.format(key_name))
+def get_last_timestamp_for_measurement(ifx_c, meas, series, min_ts=0):
+    res = ifx_c.query('SELECT last({}) FROM {};'.format(series, meas))
+    logger.debug('get_last: res: %s', res)
     if res:
-        return parse(list(res.get_points(key_name))[0]['time'], ignoretz=True)
-    return datetime.fromtimestamp(min_ts)
+        return parse(list(res.get_points())[0]['time'], ignoretz=True)
+    return min_ts
 
 
-def get_period_for_measurement(ifx_c, key_name):
-    last_record_ts = get_last_timestamp_for_measurement(ifx_c, key_name)
-    if not last_record_ts:
-        return 'max'
-    cur_time = datetime.utcnow()
-    t_delta = (cur_time - last_record_ts) / timedelta(days=1)
-    if t_delta >= 7:
-        return 30
-    elif t_delta >= 30:
-        return 90
-    elif t_delta >= 90:
-        return 180
-    elif t_delta >= 180:
-        return 365
-    elif t_delta >= 365:
-        return 'inf'
-    return 'default'
-
-
-def write_activities(ifx_c, act_list):
-    act_list = [x['summary'] for x in act_list if x and x['summary']]
-    datapoints = []
-    for one_act in act_list:
-        new_dict = {}
-        for one_key in ACTIVITY_KEYS:
-            if one_key in one_act:
-                new_dict[one_key] = one_act[one_key]
-        if 'distances' in one_act:
-            for dist in one_act['distances']:
-                new_dict['distance-{}'.format(dist['activity'])] = dist['distance']
-        for key, value in new_dict.items():
-            datapoints.append(create_api_datapoint(key, one_act['dateTime'], value))
-    logger.debug('Going to write datapoints: %s', datapoints)
-    ifx_c.write_points(datapoints, time_precision='s')
+def get_first_timestamp_for_measurement(ifx_c, meas, series, min_ts=0):
+    res = ifx_c.query('SELECT first({}) FROM {};'.format(series, meas))
+    logger.debug('get_first: res: %s', res)
+    if res:
+        return parse(list(res.get_points())[0]['time'], ignoretz=True)
+    return min_ts
 
 
 def save_var(folder, fname, value):
@@ -152,6 +166,16 @@ def write_updated_credentials(cfg_path, new_info):
     save_var(cfg_path, 'access_token', new_info['access_token'])
     save_var(cfg_path, 'refresh_token', new_info['refresh_token'])
     save_var(cfg_path, 'expires_at', str(new_info['expires_in']))
+
+
+def append_between_day_series(in_list, cur_marker, interval_max):
+    while cur_marker <= interval_max:
+        if cur_marker + REQUEST_INTERVAL > interval_max:
+            in_list.append((cur_marker, interval_max))
+            break
+        else:
+            in_list.append((cur_marker, cur_marker + REQUEST_INTERVAL))
+            cur_marker += REQUEST_INTERVAL + timedelta(days=1)
 
 
 def run_api_poller():
@@ -220,6 +244,7 @@ def run_api_poller():
     api_call_count = 1
 
     member_since = user_profile.get('user', {}).get('memberSince', '1970-01-01')
+    member_since_dt = parse(member_since, ignoretz=True)
     member_since_ts = parse(member_since, ignoretz=True).timestamp()
     logger.info('User is member since: %s (ts: %s)', member_since, member_since_ts)
 
@@ -227,40 +252,67 @@ def run_api_poller():
     day_to_request = cur_day
     #next_sleep = (60*60+3)
     next_sleep = 1
-    db_client = None
 
-    while True:
-        if db_client:
-            db_client.close()
-            del db_client
-        gc.collect()
-        logger.info('Sleeping for: %s', next_sleep)
-        time.sleep(next_sleep)
-        # Get an influxDB client connection
-        db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
-        db_client.create_database(db_name)
+    # Get an influxDB client connection
+    db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+    db_client.create_database(db_name)
 
-        if int((datetime.utcnow() - cur_day) / timedelta(days=1)) >= 1:
-            cur_day = datetime.utcnow()
+    # First try to fill any gaps: between User_member_since and first_ts,
+    # and then between last_ts and cur_day
+    to_fetch = {}
+    for meas, series_list in TIME_SERIES.items():
+        for series in series_list:
+            resource = '{}/{}'.format(meas, series)
+            if '_' in meas:
+                resource = resource.replace('_', '/', 1)
+            first_ts = get_first_timestamp_for_measurement(db_client, meas, series, min_ts=cur_day)
+            last_ts = get_last_timestamp_for_measurement(db_client, meas, series, min_ts=cur_day)
+            profile_to_first = int((first_ts - member_since_dt)/timedelta(days=1))
+            last_to_current = int((cur_day - last_ts)/timedelta(days=1))
+            logger.debug('first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                         first_ts, last_ts, profile_to_first, last_to_current)
 
-        logger.warning('Current day: %s', cur_day)
+            intervals_to_fetch = []
+            if profile_to_first > 1:
+                append_between_day_series(intervals_to_fetch, member_since_dt, first_ts)
+            if last_to_current > 1:
+                append_between_day_series(intervals_to_fetch, last_ts, cur_day)
 
-        all_activities = []
-        while True:
-            res_dict = api_client.activities(date=cur_day)
-            res_dict['summary']['dateTime'] = cur_day
-            all_activities.append(res_dict)
-            api_call_count += 1
-            cur_day -= timedelta(days=1)
-            if api_call_count > 2:
-                break
-        write_activities(db_client, all_activities)
-        logger.info('Written activities: %s', all_activities)
-        del all_activities
-        sys.exit(0)
+            for one_tuple in intervals_to_fetch:
+                results = None
+                while True:
+                    try:
+                        results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
+                        break
+                    except Timeout as ex:
+                        logger.warning('Request timed out, retrying in 15 seconds...')
+                        time.sleep(15)
+                    except HTTPServerError as ex:
+                        logger.warning('Server returned exception (5xx), retrying in 3 seconds (%s)', ex)
+                        time.sleep(3)
+                    except HTTPTooManyRequests as ex:
+                        # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
+                        # and allow the limit to reset, even if it costs us one hour
+                        logger.info('API limit reached, sleeping for 3610 seconds!')
+                        time.sleep(3601)
+                    except Exception as ex:
+                        logger.exception('Got some unexpected exception')
+                        raise
+                if not results:
+                    logger.error('Error trying to fetch results, bailing out')
+                    sys.exit(4)
+                datapoints = []
+                logger.debug('full_request: %s', results)
+                for one_d in list(results.values())[0]:
+                    logger.debug('Creating datapoint for %s, %s, %s', meas, series, one_d)
+                    datapoints.append(create_api_datapoint_meas_series(
+                        meas, series, one_d.get('value'), one_d.get('dateTime')))
+                # TODO Delete last_ts before writing to db, might have been a partial write
+                db_client.write_points(datapoints, time_precision='h')
+    db_client.close()
+    del db_client
 
-        if api_call_count > 1:
-            continue
+    sys.exit(0)
 
 
 if __name__ == "__main__":
