@@ -14,83 +14,87 @@ from fitbit import Fitbit
 from fitbit.exceptions import HTTPServerError, HTTPTooManyRequests, Timeout
 from influxdb import InfluxDBClient
 
-API_SUPPORTED_QUERIES = [
-    'activities',
-    'body',
-    'bp',
-    'foods_log',
-    'foods_log_water',
-    'glucose'
-    'heart',
-    'sleep'
-]
 
-TIME_SERIES = {
+def transform_body_log_fat_datapoint(datapoint):
+    return [{
+        'dateTime': datetime.fromtimestamp(datapoint['logId']),
+        'meas': 'body_log',
+        'series': 'fat_fat',
+        'value': datapoint['fat']
+    }]
+
+
+def transform_body_log_weight_datapoint(datapoint):
+    return [
+        {
+            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'meas': 'body_log',
+            'series': 'weight_bmi',
+            'value': datapoint['bmi']
+        },
+        {
+            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'meas': 'body_log',
+            'series': 'weight_fat',
+            'value': datapoint['fat']
+        },
+        {
+            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'meas': 'body_log',
+            'series': 'weight_weight',
+            'value': datapoint['weight']
+        }
+    ]
+
+
+BASE_SERIES = {
     'activities': [
-        'activityCalories',
-        'calories',
-        'caloriesBMR',
-        'distance',
-        'elevation',
-        'floors',
-        'minutesFairlyActive',
-        'minutesLightlyActive',
-        'minutesSedentary',
-        'minutesVeryActive',
-        'steps'
+        'activityCalories',  # dateTime, value
+        'calories',  # dateTime, value
+        'caloriesBMR',  # dateTime, value
+        'distance',  # dateTime, value
+        'elevation',  # dateTime, value
+        'floors',  # dateTime, value
+        'minutesFairlyActive',  # dateTime, value
+        'minutesLightlyActive',  # dateTime, value
+        'minutesSedentary',  # dateTime, value
+        'minutesVeryActive',  # dateTime, value
+        'steps'  # dateTime, value
     ],
     'activities_tracker': [
-        'activityCalories',
-        'calories',
-        'distance',
-        'elevation',
-        'floors',
-        'minutesFairlyActive',
-        'minutesLightlyActive',
-        'minutesSedentary',
-        'minutesVeryActive',
-        'steps'
-    ]
+        'activityCalories',  # dateTime, value
+        'calories',  # dateTime, value
+        'distance',  # dateTime, value
+        'elevation',  # dateTime, value
+        'floors',  # dateTime, value
+        'minutesFairlyActive',  # dateTime, value
+        'minutesLightlyActive',  # dateTime, value
+        'minutesSedentary',  # dateTime, value
+        'minutesVeryActive',  # dateTime, value
+        'steps'  # dateTime, value
+    ],
+    'body': [
+        'bmi',  # dateTime, value
+        'fat',  # dateTime, value
+        'weight'  # dateTime, value
+    ],
+    'body_log': {
+        'fat': {
+            'key_series': 'fat_fat',
+            # date, fat, logId, source: 'API', time
+            'transform': transform_body_log_fat_datapoint
+        },
+        'weight': {
+            'key_series': 'weight_weight',
+            # bmi, date, fat, logId, source: 'API', time, weight
+            'transform': transform_body_log_weight_datapoint
+        }
+    }
 }
 
-ACTIVITIES = [
-    'activityCalories',
-    'caloriesBMR',
-    'caloriesOut',
-    'elevation',
-    'fairlyActiveMinutes',
-    'floors',
-    'lightlyActiveMinutes',
-    'marginalCalories',
-    'sedentaryMinutes',
-    'steps',
-    'veryActiveMinutes'
-]
 
-ACTIVITY_KEYS = [
-    'activityCalories',
-    'caloriesBMR',
-    'caloriesOut',
-    'elevation',
-    'fairlyActiveMinutes',
-    'floors',
-    'lightlyActiveMinutes',
-    'marginalCalories',
-    'sedentaryMinutes',
-    'steps',
-    'veryActiveMinutes'
-]
-
-PERIOD_MAPS = {
-    1: '1d',
-    30: '3m',
-    90: '6m',
-    180: '1y',
-    365: 'max',
-    9999: 'max'
-}
-
-REQUEST_INTERVAL = timedelta(days=127)
+# Body series have max 31 days at a time, be a bit more conservative
+REQUEST_INTERVAL = timedelta(days=27)
 
 logging.basicConfig()
 logger = logging.getLogger()  # pylint: disable=invalid-name
@@ -178,9 +182,41 @@ def append_between_day_series(in_list, cur_marker, interval_max):
             cur_marker += REQUEST_INTERVAL + timedelta(days=1)
 
 
+def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch):
+    datapoints = []
+    for one_tuple in intervals_to_fetch:
+        results = None
+        while True:
+            try:
+                results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
+                break
+            except Timeout as ex:
+                logger.warning('Request timed out, retrying in 15 seconds...')
+                time.sleep(15)
+            except HTTPServerError as ex:
+                logger.warning('Server returned exception (5xx), retrying in 15 seconds (%s)', ex)
+                time.sleep(15)
+            except HTTPTooManyRequests as ex:
+                # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
+                # and allow the limit to reset, even if it costs us one hour
+                logger.info('API limit reached, sleeping for 3610 seconds!')
+                time.sleep(3610)
+            except Exception as ex:
+                logger.exception('Got some unexpected exception')
+                raise
+        if not results:
+            logger.error('Error trying to fetch results, bailing out')
+            sys.exit(4)
+        datapoints = []
+        logger.debug('full_request: %s', results)
+        for one_d in list(results.values())[0]:
+            logger.debug('Creating datapoint for %s, %s, %s', meas, series, one_d)
+            datapoints.append(one_d)
+    return datapoints
+
+
 def run_api_poller():
     cfg_path = try_getenv('CONFIG_PATH')
-    earliest_day_requested = try_load_var(cfg_path, 'earliest_day_requested')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
@@ -241,7 +277,6 @@ def run_api_poller():
     )
 
     user_profile = api_client.user_profile_get()
-    api_call_count = 1
 
     member_since = user_profile.get('user', {}).get('memberSince', '1970-01-01')
     member_since_dt = parse(member_since, ignoretz=True)
@@ -249,68 +284,56 @@ def run_api_poller():
     logger.info('User is member since: %s (ts: %s)', member_since, member_since_ts)
 
     cur_day = datetime.utcnow()
-    day_to_request = cur_day
-    #next_sleep = (60*60+3)
-    next_sleep = 1
-
-    # Get an influxDB client connection
-    db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
-    db_client.create_database(db_name)
 
     # First try to fill any gaps: between User_member_since and first_ts,
     # and then between last_ts and cur_day
-    to_fetch = {}
-    for meas, series_list in TIME_SERIES.items():
+    for meas, series_list in BASE_SERIES.items():
         for series in series_list:
             resource = '{}/{}'.format(meas, series)
             if '_' in meas:
                 resource = resource.replace('_', '/', 1)
-            first_ts = get_first_timestamp_for_measurement(db_client, meas, series, min_ts=cur_day)
-            last_ts = get_last_timestamp_for_measurement(db_client, meas, series, min_ts=cur_day)
+
+            db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+            db_client.create_database(db_name)
+
+            key_series = series
+            if isinstance(series_list, dict):
+                # Datapoints are retrieved with all keys in the same dict, so makes no sense to retrieve individual
+                # series names. Use one series as the key series.
+                key_series = series_list[series]['key_series']
+
+            first_ts = get_first_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
+            last_ts = get_last_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
             profile_to_first = int((first_ts - member_since_dt)/timedelta(days=1))
             last_to_current = int((cur_day - last_ts)/timedelta(days=1))
-            logger.debug('first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
-                         first_ts, last_ts, profile_to_first, last_to_current)
+            logger.debug('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                         key_series, first_ts, last_ts, profile_to_first, last_to_current)
+            db_client.close()
 
             intervals_to_fetch = []
             if profile_to_first > 1:
                 append_between_day_series(intervals_to_fetch, member_since_dt, first_ts)
             if last_to_current > 1:
                 append_between_day_series(intervals_to_fetch, last_ts, cur_day)
+            if not intervals_to_fetch:
+                logger.info('Nothing to fetch for %s, %s', meas, series)
+                continue
 
-            for one_tuple in intervals_to_fetch:
-                results = None
-                while True:
-                    try:
-                        results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
-                        break
-                    except Timeout as ex:
-                        logger.warning('Request timed out, retrying in 15 seconds...')
-                        time.sleep(15)
-                    except HTTPServerError as ex:
-                        logger.warning('Server returned exception (5xx), retrying in 3 seconds (%s)', ex)
-                        time.sleep(3)
-                    except HTTPTooManyRequests as ex:
-                        # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
-                        # and allow the limit to reset, even if it costs us one hour
-                        logger.info('API limit reached, sleeping for 3610 seconds!')
-                        time.sleep(3601)
-                    except Exception as ex:
-                        logger.exception('Got some unexpected exception')
-                        raise
-                if not results:
-                    logger.error('Error trying to fetch results, bailing out')
-                    sys.exit(4)
-                datapoints = []
-                logger.debug('full_request: %s', results)
-                for one_d in list(results.values())[0]:
-                    logger.debug('Creating datapoint for %s, %s, %s', meas, series, one_d)
-                    datapoints.append(create_api_datapoint_meas_series(
+            # DB can't be open here, because fitbit_fetch_datapoints can hang for a long time
+            datapoints = fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch)
+            converted_dps = []
+            for one_d in datapoints:
+                if isinstance(series_list, dict):
+                    converted_dps.extend(series_list[series]['transform'](one_d))
+                else:
+                    converted_dps.append(create_api_datapoint_meas_series(
                         meas, series, one_d.get('value'), one_d.get('dateTime')))
-                # TODO Delete last_ts before writing to db, might have been a partial write
-                db_client.write_points(datapoints, time_precision='h')
-    db_client.close()
-    del db_client
+
+            # TODO: Delete last_ts before writing to db, might have been a partial write
+            db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+            db_client.create_database(db_name)
+            db_client.write_points(converted_dps, time_precision='h', batch_size=1000)
+            db_client.close()
 
     sys.exit(0)
 
