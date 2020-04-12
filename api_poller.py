@@ -47,20 +47,49 @@ def transform_body_log_weight_datapoint(datapoint):
     ]
 
 
+def transform_activities_heart(datapoint):
+    d_t = datapoint['dateTime']
+    dp_value = datapoint['value']
+    ret_dps = [
+        {
+            'dateTime': d_t,
+            'meas': 'activities',
+            'series': 'restingHeartRate',
+            'value': dp_value['restingHeartRate']
+        }
+    ]
+    if dp_value.get('heartRateZones'):
+        for zone in dp_value['heartRateZones']:
+            for one_val in ['caloriesOut', 'max', 'min', 'minutes']:
+                series_name = 'heartRateZone_' + zone['name'].replace(' ', '_').lower()
+                ret_dps.append({
+                    'dateTime': d_t,
+                    'meas': 'activities',
+                    'series': series_name,
+                    'value': zone[one_val]
+                })
+    return ret_dps
+
+
 BASE_SERIES = {
-    'activities': [
-        'activityCalories',  # dateTime, value
-        'calories',  # dateTime, value
-        'caloriesBMR',  # dateTime, value
-        'distance',  # dateTime, value
-        'elevation',  # dateTime, value
-        'floors',  # dateTime, value
-        'minutesFairlyActive',  # dateTime, value
-        'minutesLightlyActive',  # dateTime, value
-        'minutesSedentary',  # dateTime, value
-        'minutesVeryActive',  # dateTime, value
-        'steps'  # dateTime, value
-    ],
+    'activities': {
+        'activityCalories': None,  # dateTime, value
+        'calories': None,  # dateTime, value
+        'caloriesBMR': None,  # dateTime, value
+        'distance': None,  # dateTime, value
+        'elevation': None,  # dateTime, value
+        'floors': None,  # dateTime, value
+        'heart': {
+            # https://dev.fitbit.com/build/reference/web-api/heart-rate/
+            'key_series': 'restingHeartRate',
+            'transform': transform_activities_heart
+        },
+        'minutesFairlyActive': None,  # dateTime, value
+        'minutesLightlyActive': None,  # dateTime, value
+        'minutesSedentary': None,  # dateTime, value
+        'minutesVeryActive': None,  # dateTime, value
+        'steps': None  # dateTime, value
+    },
     'activities_tracker': [
         'activityCalories',  # dateTime, value
         'calories',  # dateTime, value
@@ -89,7 +118,11 @@ BASE_SERIES = {
             # bmi, date, fat, logId, source: 'API', time, weight
             'transform': transform_body_log_weight_datapoint
         }
-    }
+    },
+    'foods_log': [
+        'caloriesIn',
+        'water'
+    ]
 }
 
 
@@ -297,7 +330,7 @@ def run_api_poller():
             db_client.create_database(db_name)
 
             key_series = series
-            if isinstance(series_list, dict):
+            if isinstance(series_list, dict) and series_list.get(series):
                 # Datapoints are retrieved with all keys in the same dict, so makes no sense to retrieve individual
                 # series names. Use one series as the key series.
                 key_series = series_list[series]['key_series']
@@ -323,7 +356,7 @@ def run_api_poller():
             datapoints = fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch)
             converted_dps = []
             for one_d in datapoints:
-                if isinstance(series_list, dict):
+                if isinstance(series_list, dict) and series_list.get(series):
                     converted_dps.extend(series_list[series]['transform'](one_d))
                 else:
                     converted_dps.append(create_api_datapoint_meas_series(
