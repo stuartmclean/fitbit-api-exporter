@@ -47,7 +47,7 @@ def transform_body_log_weight_datapoint(datapoint):
     ]
 
 
-def transform_activities_heart(datapoint):
+def transform_activities_heart_datapoint(datapoint):
     d_t = datapoint['dateTime']
     dp_value = datapoint['value']
     ret_dps = [
@@ -71,6 +71,89 @@ def transform_activities_heart(datapoint):
     return ret_dps
 
 
+def transform_sleep_datapoint(datapoint):
+    d_t = datapoint['startTime']
+    ret_dps = [
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'duration',
+            'value': datapoint.get('duration', 0) / 1000
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'efficiency',
+            'value': datapoint.get('efficiency')
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'isMainSleep',
+            'value': datapoint.get('isMainSleep', False)
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'timeInBed',
+            'value': datapoint.get('timeInBed')
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'minutesAfterWakeup',
+            'value': datapoint.get('minutesAfterWakeup')
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'minutesAsleep',
+            'value': datapoint.get('minutesAsleep')
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'minutesAwake',
+            'value': datapoint.get('minutesAwake')
+        },
+        {
+            'dateTime': d_t,
+            'meas': 'sleep',
+            'series': 'minutesToFallAsleep',
+            'value': datapoint.get('minutesToFallAsleep')
+        }
+    ]
+    if datapoint.get('levels'):
+        if datapoint.get('summary'):
+            for one_level, dict_level in datapoint['levels']['summary'].items():
+                for one_val in ['count', 'minutes', 'thirtyDayAvgMinutes']:
+                    ret_dps.append({
+                        'dateTime': d_t,
+                        'meas': 'sleep_levels',
+                        'series': one_level.lower() + '_' + one_val,
+                        'value': dict_level.get(one_val)
+                    })
+        if datapoint.get('data'):
+            for data_entry in datapoint['levels']['data']:
+                for one_val in ['level', 'seconds']:
+                    ret_dps.append({
+                        'dateTime': data_entry['datetime'],
+                        'meas': 'sleep_data',
+                        'series': 'level_' + data_entry['level'],
+                        'value': data_entry['seconds']
+                    })
+        if datapoint.get('shortData'):
+            for data_entry in datapoint['levels']['shortData']:
+                for one_val in ['level', 'seconds']:
+                    ret_dps.append({
+                        'dateTime': data_entry['datetime'],
+                        'meas': 'sleep_shortData',
+                        'series': 'level_' + data_entry['level'],
+                        'value': data_entry['seconds']
+                    })
+    return ret_dps
+
+
 BASE_SERIES = {
     'activities': {
         'activityCalories': None,  # dateTime, value
@@ -82,7 +165,7 @@ BASE_SERIES = {
         'heart': {
             # https://dev.fitbit.com/build/reference/web-api/heart-rate/
             'key_series': 'restingHeartRate',
-            'transform': transform_activities_heart
+            'transform': transform_activities_heart_datapoint
         },
         'minutesFairlyActive': None,  # dateTime, value
         'minutesLightlyActive': None,  # dateTime, value
@@ -122,7 +205,14 @@ BASE_SERIES = {
     'foods_log': [
         'caloriesIn',
         'water'
-    ]
+    ],
+    'sleep': {
+        'sleep': {
+            'key_series': 'sleep_duration',
+            # supercomplex type: https://dev.fitbit.com/build/reference/web-api/sleep/
+            'transform': transform_sleep_datapoint
+        }
+    }
 }
 
 
@@ -325,6 +415,9 @@ def run_api_poller():
             resource = '{}/{}'.format(meas, series)
             if '_' in meas:
                 resource = resource.replace('_', '/', 1)
+            if resource == 'sleep/sleep':
+                # Sleep is special, is its own main category
+                resource = 'sleep'
 
             db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
             db_client.create_database(db_name)
@@ -365,7 +458,10 @@ def run_api_poller():
             # TODO: Delete last_ts before writing to db, might have been a partial write
             db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
             db_client.create_database(db_name)
-            db_client.write_points(converted_dps, time_precision='h', batch_size=1000)
+            precision = 'h'
+            if meas == 'sleep':
+                precision = 's'
+            db_client.write_points(converted_dps, time_precision=precision, batch_size=2500)
             db_client.close()
 
     sys.exit(0)
