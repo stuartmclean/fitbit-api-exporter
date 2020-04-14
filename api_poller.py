@@ -471,7 +471,10 @@ def run_api_poller():
             precision = 'h'
             if meas == 'sleep':
                 precision = 's'
-            db_client.write_points(converted_dps, time_precision=precision, batch_size=2500)
+            if not db_client.write_points(converted_dps, time_precision=precision, batch_size=2500):
+                logger.critical('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                                key_series, first_ts, last_ts, profile_to_first, last_to_current)
+                raise Exception('Unable to write points!')
             db_client.close()
 
     sys.exit(0)
