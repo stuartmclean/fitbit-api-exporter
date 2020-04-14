@@ -446,7 +446,11 @@ def run_api_poller():
                 continue
 
             # DB can't be open here, because fitbit_fetch_datapoints can hang for a long time
+            if meas == 'sleep':
+                api_client.API_VERSION = '1.2'
             datapoints = fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch)
+            if meas == 'sleep':
+                api_client.API_ENDPOINT = '1'
             converted_dps = []
             for one_d in datapoints:
                 if isinstance(series_list, dict) and series_list.get(series):
