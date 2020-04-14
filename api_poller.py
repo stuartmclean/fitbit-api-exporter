@@ -408,6 +408,14 @@ def run_api_poller():
 
     cur_day = datetime.utcnow()
 
+    db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+    for one_db in db_client.get_list_database():
+        if one_db['name'] == db_name:
+            break
+    else:
+        db_client.create_database(db_name)
+    db_client.close()
+
     # First try to fill any gaps: between User_member_since and first_ts,
     # and then between last_ts and cur_day
     for meas, series_list in BASE_SERIES.items():
@@ -420,7 +428,6 @@ def run_api_poller():
                 resource = 'sleep'
 
             db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
-            db_client.create_database(db_name)
 
             key_series = series
             if isinstance(series_list, dict) and series_list.get(series):
@@ -461,7 +468,6 @@ def run_api_poller():
 
             # TODO: Delete last_ts before writing to db, might have been a partial write
             db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
-            db_client.create_database(db_name)
             precision = 'h'
             if meas == 'sleep':
                 precision = 's'
