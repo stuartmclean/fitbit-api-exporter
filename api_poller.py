@@ -219,9 +219,11 @@ BASE_SERIES = {
 # Body series have max 31 days at a time, be a bit more conservative
 REQUEST_INTERVAL = timedelta(days=27)
 
-logging.basicConfig()
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(lineno)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger()  # pylint: disable=invalid-name
-logger.setLevel(logging.DEBUG)
 
 
 def try_cast_to_int(in_var):
