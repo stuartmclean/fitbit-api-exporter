@@ -330,7 +330,6 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
         if not results:
             logger.error('Error trying to fetch results, bailing out')
             sys.exit(4)
-        datapoints = []
         logger.debug('full_request: %s', results)
         for one_d in list(results.values())[0]:
             logger.debug('Creating datapoint for %s, %s, %s', meas, series, one_d)
