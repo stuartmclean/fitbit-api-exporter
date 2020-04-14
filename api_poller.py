@@ -399,7 +399,25 @@ def run_api_poller():
         system=Fitbit.METRIC
     )
 
-    user_profile = api_client.user_profile_get()
+    user_profile = None
+    while True:
+        try:
+            user_profile = api_client.user_profile_get()
+            break
+        except Timeout as ex:
+            logger.warning('Request timed out, retrying in 15 seconds...')
+            time.sleep(15)
+        except HTTPServerError as ex:
+            logger.warning('Server returned exception (5xx), retrying in 15 seconds (%s)', ex)
+            time.sleep(15)
+        except HTTPTooManyRequests as ex:
+            # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
+            # and allow the limit to reset, even if it costs us one hour
+            logger.info('API limit reached, sleeping for 3610 seconds!')
+            time.sleep(3610)
+        except Exception as ex:
+            logger.exception('Got some unexpected exception')
+            raise
 
     member_since = user_profile.get('user', {}).get('memberSince', '1970-01-01')
     member_since_dt = parse(member_since, ignoretz=True)
