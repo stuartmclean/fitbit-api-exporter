@@ -67,7 +67,7 @@ def transform_activities_heart_datapoint(datapoint):
                     'dateTime': d_t,
                     'meas': 'activities',
                     'series': series_name,
-                    'value': zone[one_val]
+                    'value': zone.get(one_val, 0.0)
                 })
     return ret_dps
 
