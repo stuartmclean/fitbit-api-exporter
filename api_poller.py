@@ -48,6 +48,7 @@ def transform_body_log_weight_datapoint(datapoint):
 
 
 def transform_activities_heart_datapoint(datapoint):
+    logger.debug('transform_activities_heart_datapoint: %s', datapoint)
     d_t = datapoint['dateTime']
     dp_value = datapoint['value']
     ret_dps = [
