@@ -62,7 +62,7 @@ def transform_activities_heart_datapoint(datapoint):
     if dp_value.get('heartRateZones'):
         for zone in dp_value['heartRateZones']:
             for one_val in ['caloriesOut', 'max', 'min', 'minutes']:
-                series_name = 'heartRateZone_' + zone['name'].replace(' ', '_').lower()
+                series_name = '_'.join(['hrz', zone['name'].replace(' ', '_').lower(), one_val])
                 ret_dps.append({
                     'dateTime': d_t,
                     'meas': 'activities',
