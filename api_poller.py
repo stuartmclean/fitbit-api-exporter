@@ -20,7 +20,7 @@ def transform_body_log_fat_datapoint(datapoint):
         'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
         'meas': 'body_log',
         'series': 'fat_fat',
-        'value': datapoint['fat']
+        'value': datapoint.get('fat', 0.0)
     }]
 
 
@@ -30,19 +30,19 @@ def transform_body_log_weight_datapoint(datapoint):
             'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_bmi',
-            'value': datapoint['bmi']
+            'value': datapoint.get('bmi', 0.0)
         },
         {
             'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_fat',
-            'value': datapoint['fat']
+            'value': datapoint.get('fat', 0.0)
         },
         {
             'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_weight',
-            'value': datapoint['weight']
+            'value': datapoint.get('weight', 0.0)
         }
     ]
 
@@ -480,15 +480,15 @@ def run_api_poller():
             if meas == 'sleep':
                 api_client.API_ENDPOINT = '1'
             converted_dps = []
-            if isinstance(series_list, dict) and series_list.get(series):
-                for one_d in datapoints:
-                    if not one_d:
-                        continue
-                    converted_dps.extend(series_list[series]['transform'](one_d))
-            else:
-                for one_d in datapoints:
-                    if not one_d:
-                        continue
+            for one_d in datapoints:
+                if not one_d:
+                    continue
+                if isinstance(series_list, dict) and series_list.get(series):
+                    new_dp = converted_dps.extend(series_list[series]['transform'](one_d))
+                    converted_dps.append(create_api_datapoint_meas_series(
+                        new_dp['meas'], new_dp['series'], new_dp['value'], new_dp['dateTime']
+                    ))
+                else:
                     converted_dps.append(create_api_datapoint_meas_series(
                         meas, series, one_d.get('value'), one_d.get('dateTime')))
 
