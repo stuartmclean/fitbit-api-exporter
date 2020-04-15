@@ -56,7 +56,7 @@ def transform_activities_heart_datapoint(datapoint):
             'dateTime': d_t,
             'meas': 'activities',
             'series': 'restingHeartRate',
-            'value': dp_value['restingHeartRate']
+            'value': dp_value.get('restingHeartRate', 0.0)
         }
     ]
     if dp_value.get('heartRateZones'):
