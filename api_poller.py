@@ -480,10 +480,15 @@ def run_api_poller():
             if meas == 'sleep':
                 api_client.API_ENDPOINT = '1'
             converted_dps = []
-            for one_d in datapoints:
-                if isinstance(series_list, dict) and series_list.get(series):
+            if isinstance(series_list, dict) and series_list.get(series):
+                for one_d in datapoints:
+                    if not one_d:
+                        continue
                     converted_dps.extend(series_list[series]['transform'](one_d))
-                else:
+            else:
+                for one_d in datapoints:
+                    if not one_d:
+                        continue
                     converted_dps.append(create_api_datapoint_meas_series(
                         meas, series, one_d.get('value'), one_d.get('dateTime')))
 
