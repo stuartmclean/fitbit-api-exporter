@@ -484,10 +484,11 @@ def run_api_poller():
                 if not one_d:
                     continue
                 if isinstance(series_list, dict) and series_list.get(series):
-                    new_dp = converted_dps.extend(series_list[series]['transform'](one_d))
-                    converted_dps.append(create_api_datapoint_meas_series(
-                        new_dp['meas'], new_dp['series'], new_dp['value'], new_dp['dateTime']
-                    ))
+                    new_dps = series_list[series]['transform'](one_d)
+                    for one_dd in new_dps:
+                        converted_dps.append(create_api_datapoint_meas_series(
+                            one_dd['meas'], one_dd['series'], one_dd['value'], one_dd['dateTime']
+                        ))
                 else:
                     converted_dps.append(create_api_datapoint_meas_series(
                         meas, series, one_d.get('value'), one_d.get('dateTime')))
