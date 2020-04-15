@@ -152,6 +152,7 @@ def transform_sleep_datapoint(datapoint):
                         'series': 'level_' + data_entry['level'],
                         'value': data_entry['seconds']
                     })
+    logger.debug('Returning heart datapoints: %s', ret_dps)
     return ret_dps
 
 
