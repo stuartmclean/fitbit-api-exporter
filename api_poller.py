@@ -17,7 +17,7 @@ from influxdb import InfluxDBClient
 
 def transform_body_log_fat_datapoint(datapoint):
     return [{
-        'dateTime': datetime.fromtimestamp(datapoint['logId']),
+        'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
         'meas': 'body_log',
         'series': 'fat_fat',
         'value': datapoint['fat']
@@ -27,19 +27,19 @@ def transform_body_log_fat_datapoint(datapoint):
 def transform_body_log_weight_datapoint(datapoint):
     return [
         {
-            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_bmi',
             'value': datapoint['bmi']
         },
         {
-            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_fat',
             'value': datapoint['fat']
         },
         {
-            'dateTime': datetime.fromtimestamp(datapoint['logId']),
+            'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
             'series': 'weight_weight',
             'value': datapoint['weight']
