@@ -439,74 +439,77 @@ def run_api_poller():
 
     # First try to fill any gaps: between User_member_since and first_ts,
     # and then between last_ts and cur_day
-    for meas, series_list in BASE_SERIES.items():
-        for series in series_list:
-            resource = '{}/{}'.format(meas, series)
-            if '_' in meas:
-                resource = resource.replace('_', '/', 1)
-            if resource == 'sleep/sleep':
-                # Sleep is special, is its own main category
-                resource = 'sleep'
+    while True:
+        for meas, series_list in BASE_SERIES.items():
+            for series in series_list:
+                resource = '{}/{}'.format(meas, series)
+                if '_' in meas:
+                    resource = resource.replace('_', '/', 1)
+                if resource == 'sleep/sleep':
+                    # Sleep is special, is its own main category
+                    resource = 'sleep'
 
-            db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
 
-            key_series = series
-            if isinstance(series_list, dict) and series_list.get(series):
-                # Datapoints are retrieved with all keys in the same dict, so makes no sense to retrieve individual
-                # series names. Use one series as the key series.
-                key_series = series_list[series]['key_series']
-
-            first_ts = get_first_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
-            last_ts = get_last_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
-            profile_to_first = int((first_ts - member_since_dt)/timedelta(days=1))
-            last_to_current = int((cur_day - last_ts)/timedelta(days=1))
-            logger.debug('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
-                         key_series, first_ts, last_ts, profile_to_first, last_to_current)
-            db_client.close()
-
-            intervals_to_fetch = []
-            if profile_to_first > 1:
-                append_between_day_series(intervals_to_fetch, member_since_dt, first_ts)
-            if last_to_current > 1:
-                append_between_day_series(intervals_to_fetch, last_ts, cur_day)
-            if not intervals_to_fetch:
-                logger.info('Nothing to fetch for %s, %s', meas, series)
-                continue
-
-            # DB can't be open here, because fitbit_fetch_datapoints can hang for a long time
-            if meas == 'sleep':
-                api_client.API_VERSION = '1.2'
-            datapoints = fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch)
-            if meas == 'sleep':
-                api_client.API_ENDPOINT = '1'
-            converted_dps = []
-            for one_d in datapoints:
-                if not one_d:
-                    continue
+                key_series = series
                 if isinstance(series_list, dict) and series_list.get(series):
-                    new_dps = series_list[series]['transform'](one_d)
-                    for one_dd in new_dps:
-                        converted_dps.append(create_api_datapoint_meas_series(
-                            one_dd['meas'], one_dd['series'], one_dd['value'], one_dd['dateTime']
-                        ))
-                else:
-                    converted_dps.append(create_api_datapoint_meas_series(
-                        meas, series, one_d.get('value'), one_d.get('dateTime')))
+                    # Datapoints are retrieved with all keys in the same dict, so makes no sense to retrieve individual
+                    # series names. Use one series as the key series.
+                    key_series = series_list[series]['key_series']
 
-            # TODO: Delete last_ts before writing to db, might have been a partial write
-            db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
-            precision = 'h'
-            if meas == 'sleep':
-                precision = 's'
-            logger.debug('Going to write %s points, key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
-                         len(converted_dps), key_series, first_ts, last_ts, profile_to_first, last_to_current)
-            logger.debug('First 3: %s', converted_dps[:3])
-            logger.debug('Last 3: %s', converted_dps[-3:])
-            if not db_client.write_points(converted_dps, time_precision=precision, batch_size=2500):
-                logger.critical('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
-                                key_series, first_ts, last_ts, profile_to_first, last_to_current)
-                raise Exception('Unable to write points!')
-            db_client.close()
+                first_ts = get_first_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
+                last_ts = get_last_timestamp_for_measurement(db_client, meas, key_series, min_ts=cur_day)
+                profile_to_first = int((first_ts - member_since_dt)/timedelta(days=1))
+                last_to_current = int((cur_day - last_ts)/timedelta(days=1))
+                logger.debug('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                             key_series, first_ts, last_ts, profile_to_first, last_to_current)
+                db_client.close()
+
+                intervals_to_fetch = []
+                if profile_to_first > 1:
+                    append_between_day_series(intervals_to_fetch, member_since_dt, first_ts)
+                if last_to_current > 1:
+                    append_between_day_series(intervals_to_fetch, last_ts, cur_day)
+                if not intervals_to_fetch:
+                    logger.info('No gaps to fetch for %s, %s: fetching last day only', meas, series)
+                    intervals_to_fetch.append((cur_day, cur_day,))
+
+                # DB can't be open here, because fitbit_fetch_datapoints can hang for a long time
+                if meas == 'sleep':
+                    api_client.API_VERSION = '1.2'
+                datapoints = fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch)
+                if meas == 'sleep':
+                    api_client.API_ENDPOINT = '1'
+                converted_dps = []
+                for one_d in datapoints:
+                    if not one_d:
+                        continue
+                    if isinstance(series_list, dict) and series_list.get(series):
+                        new_dps = series_list[series]['transform'](one_d)
+                        for one_dd in new_dps:
+                            converted_dps.append(create_api_datapoint_meas_series(
+                                one_dd['meas'], one_dd['series'], one_dd['value'], one_dd['dateTime']
+                            ))
+                    else:
+                        converted_dps.append(create_api_datapoint_meas_series(
+                            meas, series, one_d.get('value'), one_d.get('dateTime')))
+
+                # TODO: Delete last_ts before writing to db, might have been a partial write
+                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                precision = 'h'
+                if meas == 'sleep':
+                    precision = 's'
+                logger.debug('Going to write %s points, key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                             len(converted_dps), key_series, first_ts, last_ts, profile_to_first, last_to_current)
+                logger.debug('First 3: %s', converted_dps[:3])
+                logger.debug('Last 3: %s', converted_dps[-3:])
+                if not db_client.write_points(converted_dps, time_precision=precision, batch_size=2500):
+                    logger.critical('key_series: %s, first_ts: %s, last_ts: %s, profile_to_first: %s, last_to_current: %s',
+                                    key_series, first_ts, last_ts, profile_to_first, last_to_current)
+                    raise Exception('Unable to write points!')
+                db_client.close()
+        logger.info('All series processed, sleeping for 4h')
+        time.sleep(3610*4)
 
     sys.exit(0)
 
