@@ -210,7 +210,7 @@ BASE_SERIES = {
     ],
     'sleep': {
         'sleep': {
-            'key_series': 'sleep_duration',
+            'key_series': 'duration',
             # supercomplex type: https://dev.fitbit.com/build/reference/web-api/sleep/
             'transform': transform_sleep_datapoint
         }
