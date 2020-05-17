@@ -1,0 +1,59 @@
+
+version: '2.3'
+
+services:
+    grafana:
+        depends_on:
+            - influxdb
+        image: grafana/grafana
+        container_name: fitbit-grafana
+        hostname: fitbit-grafana.domain.local
+        restart: always
+        volumes:
+            - /data/fitbit-api-exporter/grafana/etc_grafana:/etc/grafana
+            - /data/fitbit-api-exporter/grafana/var_lib_grafana:/var/lib/grafana
+        networks:
+            - fitbit-exporter
+    fitbit-api-exporter:
+        depends_on:
+            - influxdb
+        image: registry.gitlab.com/fsvm88/fitbit-api-exporter:latest
+        container_name: fitbit-api-exporter
+        hostname: fitbit-api-exporter.domain.local
+        volumes:
+            - /data/fitbit-api-exporter/api-exporter/config:/config
+        environment:
+            - CONFIG_PATH=/config
+            - DB_HOST=influxdb
+            - CLIENT_ID=XXXXXX
+            - CLIENT_SECRET=<hex_string>
+            - ACCESS_TOKEN=<super_log_access_token>
+            - REFRESH_TOKEN=<refresh_token>
+            - CALLBACK_URL=http://localhost:8080/
+            - EXPIRES_AT=604800
+        networks:
+            - fitbit-exporter
+        restart: always
+    influxdb:
+        container_name: influxdb
+        hostname: influxdb.domain.local
+        image: influxdb:1.7.10
+        restart: always
+        volumes:
+            - /data/fitbit-api-exporter/influxdb/var_lib_influxdb:/var/lib/influxdb
+            - /data/fitbit-api-exporter/influxdb/etc_influxdb/influxdb.conf:/etc/influxdb/influxdb.conf
+        networks:
+            - fitbit-exporter
+        environment:
+            - INFLUXDB_DATA_CACHE_MAX_MEMORY_SIZE=4g
+            - INFLUXDB_DATA_CACHE_SNAPSHOT_MEMORY_SIZE=400m
+            - INFLUXDB_DATA_COMPACT_THROUGHPUT=2g
+            - INFLUXDB_DATA_TSM_USE_MADV_WILLNEED=true
+            - INFLUXDB_DATA_MAX_VALUES_PER_TAG=0
+            - INFLUXDB_DATA_MAX_INDEX_LOG_FILE_SIZE=500m
+            - INFLUXDB_HTTP_PPROF_ENABLED=true
+
+networks:
+    fitbit-exporter:
+        driver: bridge
+        name: fitbit-exporter
