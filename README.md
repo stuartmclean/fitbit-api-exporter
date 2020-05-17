@@ -14,26 +14,26 @@ Notes:
 1. Do a test-run of the docker-compose.yml provided, and customize it to your liking, ensure the containers come up, esp. the InfluxDB one
 1. Go at [Fitbit dev login](https://dev.fitbit.com/login), login with your account
 1. Register an application: click on "Register an app" at the top
-  - Application name and description to your liking
-  - Application website, Organization website, terms of service, privacy policy, callback URL, you can all set "http://localhost:8080/"
-  - OAuth 2.0 Application Type: Personal
-  - Default Access Type: Read-Only
+    - Application name and description to your liking
+    - Application website, Organization website, terms of service, privacy policy, callback URL, you can all set "http://localhost:8080/"
+    - OAuth 2.0 Application Type: Personal
+    - Default Access Type: Read-Only
 1. Get first two parameters: click on "Manage my apps", click on your new application; you will need to note down the following in order to fill corresponding env vars:
-  - OAuth 2.0 Client ID: CLIENT_ID
-  - Client Secret: CLIENT_SECRET
-  - Callback URL: CALLBACK_URL
+    - OAuth 2.0 Client ID: CLIENT_ID
+    - Client Secret: CLIENT_SECRET
+    - Callback URL: CALLBACK_URL
 1. Generate the tokens: click on the small link at the bottom of the page "OAuth 2.0 tutorial page"
-  1. Select "Flow type": "Authorization Code Flow"
-  1. Select Scopes: activity, heartrate, profile, settings, sleep, weight
-  1. Click on the link at the end of section 1 "We've generate the authorization URL for you, all you need to do is just click on the link below:"
-  1. Select all scopes and click "Allow"
-  1. Copy the code parameter from the URL of the window that opens: code=[.....]#_=_
-  1. Paste it in the "1A Get Code" form
-  1. Copy the curl call to a script, remove newlines, execute the script
-  1. Copy the JSON output from the script and paste into the "2: Parse response" section
-  1. Note down:
-    - Access token: ACCESS_TOKEN
-    - Refresh Token: REFRESH_TOKEN
+    1. Select "Flow type": "Authorization Code Flow"
+    1. Select Scopes: activity, heartrate, profile, settings, sleep, weight
+    1. Click on the link at the end of section 1 "We've generate the authorization URL for you, all you need to do is just click on the link below:"
+    1. Select all scopes and click "Allow"
+    1. Copy the code parameter from the URL of the window that opens: code=[.....]#_=_
+    1. Paste it in the "1A Get Code" form
+    1. Copy the curl call to a script, remove newlines, execute the script
+    1. Copy the JSON output from the script and paste into the "2: Parse response" section
+    1. Note down:
+        - Access token: ACCESS_TOKEN
+        - Refresh Token: REFRESH_TOKEN
 1. You can fill the provided `docker-compose.yml` with the parameters obtained
 1. Pull up the containers
 
