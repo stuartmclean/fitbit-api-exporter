@@ -11,6 +11,7 @@ Notes:
 - the script sources environment variables if missing, otherwise sources the saved config data (this is because the token gets refreshed automatically thanks to the refresh token)
 - if you don't run the scripts on a server, you may need to refresh the access token and refresh token at the next run, because the refresh token may have already expired (see below)
 
+Step-by-step guide:
 1. Do a test-run of the docker-compose.yml provided, and customize it to your liking, ensure the containers come up, esp. the InfluxDB one
 1. Go at [Fitbit dev login](https://dev.fitbit.com/login), login with your account
 1. Register an application: click on "Register an app" at the top
