@@ -16,18 +16,18 @@ from influxdb import InfluxDBClient
 
 
 def transform_body_log_fat_datapoint(datapoint):
-    ret_val = [{
+    ret_dps = [{
         'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
         'meas': 'body_log',
         'series': 'fat_fat',
         'value': datapoint.get('fat', 0.0)
     }]
     logger.debug('Returning body_log_fat datapoints: %s', ret_dps)
-    return ret_val
+    return ret_dps
 
 
 def transform_body_log_weight_datapoint(datapoint):
-    ret_val = [
+    ret_dps = [
         {
             'dateTime': datetime.fromtimestamp(int(datapoint['logId'])/1000),
             'meas': 'body_log',
@@ -48,7 +48,7 @@ def transform_body_log_weight_datapoint(datapoint):
         }
     ]
     logger.debug('Returning body_log_weight datapoints: %s', ret_dps)
-    return ret_val
+    return ret_dps
 
 
 def transform_activities_heart_datapoint(datapoint):
