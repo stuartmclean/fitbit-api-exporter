@@ -499,7 +499,6 @@ def run_api_poller():
                         converted_dps.append(create_api_datapoint_meas_series(
                             meas, series, one_d.get('value'), one_d.get('dateTime')))
 
-                # TODO: Delete last_ts before writing to db, might have been a partial write
                 db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
                 precision = 'h'
                 if meas == 'sleep':
