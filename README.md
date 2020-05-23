@@ -3,6 +3,7 @@
 
 The project is a simple script to export data from Fitbit's Web APIs to a custom InfluxDB database, and then graph it via Grafana.  
 Everything is made easier via docker and docker-compose.
+**Grafana dashboard** is available at: https://grafana.com/grafana/dashboards/12348
 
 ## Quick setup
 Notes:
