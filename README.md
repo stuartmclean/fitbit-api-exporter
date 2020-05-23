@@ -43,6 +43,7 @@ Step-by-step guide:
 ### Fitbit APIs
 1. Fitbit APIs are limited to 150calls/hour, the script will detect this and sleep for 1h 10s
 1. The script will sleep for 4h when there's no additional data to fetch, and only fetch the last day at each round
+1. Support for older responses of the APIs is limited/non-existing
 
 ### Intra-day time series
 **Intra-day time series are not implemented**.  
