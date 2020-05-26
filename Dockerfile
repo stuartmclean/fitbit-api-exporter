@@ -17,7 +17,7 @@ ENV UNITS=None
 
 RUN pip install fitbit influxdb
 
-ADD api_poller.py /
-RUN chmod +x /api_poller.py
+ADD api_poller.py fitbit_export_loader.py /
+RUN chmod +x /api_poller.py /fitbit_export_loader.py
 
 CMD ["/api_poller.py"]

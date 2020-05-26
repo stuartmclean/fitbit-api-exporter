@@ -5,7 +5,7 @@ The project is a simple script to export data from Fitbit's Web APIs to a custom
 Everything is made easier via docker and docker-compose.
 **Grafana dashboard** is available at: https://grafana.com/grafana/dashboards/12348
 
-## Quick setup
+## Quick setup (API exporter)
 Notes:
 - basic knowledge of docker is assumed
 - unless otherwise noted, leave fields at default
@@ -38,6 +38,19 @@ Step-by-step guide:
         - Refresh Token: REFRESH_TOKEN
 1. You can fill the provided `docker-compose.yml` with the parameters obtained
 1. Pull up the containers
+
+## Quick setup (Dump loader)
+1. Navigate to www.fitbit.com, access with your credentials
+1. Go to "Account settings", then "Data Export"
+1. Select "Export account archive" (or similar - the whole of data available)
+1. Confirm the export via the export email
+1. Wait for the data to be available
+1. Download the data
+1. Extract the dump
+1. Pull up the `influxdb` container: `docker-compose up -d influxdb`
+1. Run the docker image: `docker run -it -v <folder_containing_extracted_dump>:/dump -eDB_HOST=... -eDB_PORT=... -eDB_USER=... -eDB_PASSWORD=... -e DB_NAME=... registry.gitlab.com/fsvm88/fitbit-api-exporter:latest /fitbit_export_loader.py`
+
+**NOTE: the data folder must be provided at `user-site-export` parent level (e.g: /path/to/folder/username)**
 
 ## Limitations
 
