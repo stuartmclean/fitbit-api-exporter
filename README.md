@@ -48,7 +48,10 @@ Step-by-step guide:
 1. Download the data
 1. Extract the dump
 1. Pull up the `influxdb` container: `docker-compose up -d influxdb`
-1. Run the docker image: `docker run -it -v <folder_containing_extracted_dump>:/dump -eDB_HOST=... -eDB_PORT=... -eDB_USER=... -eDB_PASSWORD=... -e DB_NAME=... registry.gitlab.com/fsvm88/fitbit-api-exporter:latest /fitbit_export_loader.py`
+1. Run the docker image: `docker run -it --network fitbit-exporter -v<folder_containing_extracted_dump>:/dump -eDB_HOST=... -eDB_PORT=... -eDB_USER=... -eDB_PASSWORD=... -eDB_NAME=... registry.gitlab.com/fsvm88/fitbit-api-exporter:latest /fitbit_export_loader.py` (recheck the network name, as it depends on docker-compose)
+1. Wait for the container to finish
+
+The command can be rerun as required in case of errors, subsequent runs should skip already-written datapoints using the timestamps of the entries.
 
 **NOTE: the data folder must be provided at `user-site-export` parent level (e.g: /path/to/folder/username)**
 
