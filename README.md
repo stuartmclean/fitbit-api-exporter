@@ -3,7 +3,9 @@
 
 The project is a simple script to export data from Fitbit's Web APIs to a custom InfluxDB database, and then graph it via Grafana.  
 Everything is made easier via docker and docker-compose.
-**Grafana dashboard** is available at: https://grafana.com/grafana/dashboards/12348
+**Grafana dashboards** are available at:
+- API export: https://grafana.com/grafana/dashboards/12348
+- Archive data export: https://grafana.com/grafana/dashboards/12374
 
 ## Quick setup (API exporter)
 Notes:
@@ -39,16 +41,16 @@ Step-by-step guide:
 1. You can fill the provided `docker-compose.yml` with the parameters obtained
 1. Pull up the containers
 
-## Quick setup (Dump loader)
+## Quick setup (Archive export loader)
 1. Navigate to www.fitbit.com, access with your credentials
 1. Go to "Account settings", then "Data Export"
 1. Select "Export account archive" (or similar - the whole of data available)
 1. Confirm the export via the export email
 1. Wait for the data to be available
 1. Download the data
-1. Extract the dump
+1. Extract the archive
 1. Pull up the `influxdb` container: `docker-compose up -d influxdb`
-1. Run the docker image: `docker run -it --network fitbit-exporter -v<folder_containing_extracted_dump>:/dump -eDB_HOST=... -eDB_PORT=... -eDB_USER=... -eDB_PASSWORD=... -eDB_NAME=... registry.gitlab.com/fsvm88/fitbit-api-exporter:latest /fitbit_export_loader.py` (recheck the network name, as it depends on docker-compose)
+1. Run the docker image: `docker run -it --network fitbit-exporter -v<folder_containing_extracted_archive>:/dump -eDB_HOST=... -eDB_PORT=... -eDB_USER=... -eDB_PASSWORD=... -eDB_NAME=... registry.gitlab.com/fsvm88/fitbit-api-exporter:latest /fitbit_export_loader.py` (recheck the network name, as it depends on docker-compose)
 1. Wait for the container to finish
 
 The command can be rerun as required in case of errors, subsequent runs should skip already-written datapoints using the timestamps of the entries.
@@ -75,5 +77,4 @@ One last note is that intra-day data is much more granular (1m/30s/1s intervals)
 Python script, developed with:
 - [Fitbit API client](https://github.com/orcasgit/python-fitbit.git)
 - [InfluxDB client](https://github.com/influxdata/influxdb-python.git)
-
 
