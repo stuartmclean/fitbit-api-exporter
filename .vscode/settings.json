@@ -1,0 +1,31 @@
+{
+    "editor.rulers": [
+        80,
+        120
+    ],
+    "files.exclude": {
+        "**/._*": true,
+        "**/*.pyc": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/*.egg-info": true
+    },
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintArgs": [
+        "--rcfile=${workspaceFolder}/.pylintrc"
+    ],
+    "python.formatting.provider": "autopep8",
+    "python.formatting.autopep8Args": [
+        "--max-line-length=120"
+    ],
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.pytestArgs": [
+        "--no-cov",
+        "tests"
+    ]
+}
+
