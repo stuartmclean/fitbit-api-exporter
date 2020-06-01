@@ -3,3 +3,4 @@ docker_config/
 docker_influx/
 .env
 .pytest_cache/
+.vscode/settings.json
