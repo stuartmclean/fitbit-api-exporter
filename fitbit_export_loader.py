@@ -159,8 +159,8 @@ def mainfunc():
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
-    db_password = try_getenv('DB_PASSWORD', '')
-    db_name = try_getenv('DB_NAME', '')
+    db_password = try_getenv('DB_PASSWORD', None)
+    db_name = try_getenv('DB_NAME', None)
 
     required_folder = os.path.join('/dump', 'user-site-export')
     if not os.path.isdir(required_folder):
