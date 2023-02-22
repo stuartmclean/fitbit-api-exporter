@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from functools import partial
+from dotenv import load_dotenv
 
 from dateutil.parser import parse
 from fitbit import Fitbit
@@ -347,12 +348,13 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
 
 
 def run_api_poller():
+    load_dotenv
     cfg_path = try_getenv('CONFIG_PATH')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
-    db_password = try_getenv('DB_PASSWORD')
-    db_name = try_getenv('DB_NAME')
+    db_password = try_getenv('DB_PASSWORD', 'root')
+    db_name = try_getenv('DB_NAME', 'root')
     redirect_url = try_getenv('CALLBACK_URL')
     units = try_getenv('UNITS', 'it_IT')
 
@@ -434,7 +436,7 @@ def run_api_poller():
 
     cur_day = datetime.utcnow()
 
-    db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+    db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
     for one_db in db_client.get_list_database():
         if one_db['name'] == db_name:
             break
@@ -514,8 +516,6 @@ def run_api_poller():
                 db_client.close()
         logger.info('All series processed, sleeping for 4h')
         time.sleep(3610*4)
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":
