@@ -318,7 +318,6 @@ def append_between_day_series(in_list, cur_marker, interval_max):
 def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch):
     datapoints = []
     for one_tuple in intervals_to_fetch:
-        results = None
         while True:
             try:
                 results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
@@ -409,7 +408,6 @@ def run_api_poller():
         system=Fitbit.METRIC
     )
 
-    user_profile = None
     while True:
         try:
             user_profile = api_client.user_profile_get()
