@@ -320,7 +320,10 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
     for one_tuple in intervals_to_fetch:
         while True:
             try:
-                results = api_client.intraday_time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
+                if resource in ['calories', 'distance', 'elevation', 'floors', 'steps']:
+                    results = api_client.intraday_time_series(resource, base_date=one_tuple[0])
+                else:
+                    results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
                 break
             except Timeout:
                 logger.warning('Request timed out, retrying in 15 seconds...')
