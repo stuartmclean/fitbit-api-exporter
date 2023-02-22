@@ -320,20 +320,20 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
     for one_tuple in intervals_to_fetch:
         while True:
             try:
-                results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
+                results = api_client.intraday_time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
                 break
-            except Timeout as ex:
+            except Timeout:
                 logger.warning('Request timed out, retrying in 15 seconds...')
                 time.sleep(15)
             except HTTPServerError as ex:
                 logger.warning('Server returned exception (5xx), retrying in 15 seconds (%s)', ex)
                 time.sleep(15)
-            except HTTPTooManyRequests as ex:
+            except HTTPTooManyRequests:
                 # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
                 # and allow the limit to reset, even if it costs us one hour
                 logger.info('API limit reached, sleeping for 3610 seconds!')
                 time.sleep(3610)
-            except Exception as ex:
+            except Exception:
                 logger.exception('Got some unexpected exception')
                 raise
         if not results:
