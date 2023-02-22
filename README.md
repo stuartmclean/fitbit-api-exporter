@@ -8,6 +8,8 @@ Everything is made easier via docker and docker-compose.
 - Archive data export: https://grafana.com/grafana/dashboards/12374
 
 ## Quick setup (API exporter)
+`pip install -r requirements.txt`
+
 Notes:
 - basic knowledge of docker is assumed
 - unless otherwise noted, leave fields at default
