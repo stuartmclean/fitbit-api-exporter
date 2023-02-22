@@ -347,7 +347,7 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
 
 
 def run_api_poller():
-    load_dotenv
+    load_dotenv()
     cfg_path = try_getenv('CONFIG_PATH')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
@@ -454,7 +454,7 @@ def run_api_poller():
                     # Sleep is special, is its own main category
                     resource = 'sleep'
 
-                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
 
                 key_series = series
                 if isinstance(series_list, dict) and series_list.get(series):
@@ -499,7 +499,7 @@ def run_api_poller():
                         converted_dps.append(create_api_datapoint_meas_series(
                             meas, series, one_d.get('value'), one_d.get('dateTime')))
 
-                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
                 precision = 'h'
                 if meas == 'sleep':
                     precision = 's'
