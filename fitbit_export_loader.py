@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
-import argparse
 from dateutil.parser import parse
 from glob import glob
 from influxdb import InfluxDBClient
+from dotenv import load_dotenv
 import os
 import json
 
 CHUNK_SIZE = 5000
+
 
 def try_cast_to_int(in_var):
     try:
         return int(in_var)
     except Exception:
         return in_var
+
 
 def try_getenv(var_name, default_var=None):
     my_var = os.environ.get(var_name)
@@ -25,16 +27,19 @@ def try_getenv(var_name, default_var=None):
         raise ValueError(errstr)
     return my_var
 
+
 def filter_estimated_oxygen(row):
     if 'Infrared' not in row:
         dt, val = row.split(',')
         return { 'dateTime': dt, 'value': val }
     return {}
 
+
 def filter_weight(row):
     row['dateTime'] = row['date'] + ' ' + row['time']
     del row['date'], row['time']
     return row
+
 
 def downcast(x):
     ret = x
@@ -67,6 +72,7 @@ measurements = {
         'weight': { 'extract': lambda x: filter_weight(x), 'time': 'dateTime', 'fields': { 'bmi': lambda x: float(x), 'fat': lambda x: float(x), 'weight': lambda x: float(x)*0.45359 } }
         }
 
+
 def merge_files(flist):
     merged_list = []
     for onef in flist:
@@ -78,8 +84,10 @@ def merge_files(flist):
                 merged_list.append(js)
     return merged_list
 
+
 def create_datapoint(measurement, time, fields, tag="data_dump"):
     return { "measurement": measurement, "tags": { "imported_from": tag }, "time": time, "fields": fields }
+
 
 def dedup_meas(list_of_meas):
     tracking_set = set()
@@ -91,6 +99,7 @@ def dedup_meas(list_of_meas):
         else:
             print("Duplicated record: {}".format(record))
     return new_list
+
 
 def write_data_for(dump_folder, keyname, influx_client):
     print('---------')
@@ -144,23 +153,26 @@ def write_data_for(dump_folder, keyname, influx_client):
         final_list = final_list[CHUNK_SIZE:]
     print("Done writing to DB for key: {}".format(keyname))
 
+
 def mainfunc():
+    load_dotenv()
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
-    db_password = try_getenv('DB_PASSWORD')
-    db_name = try_getenv('DB_NAME')
+    db_password = try_getenv('DB_PASSWORD', 'root')
+    db_name = try_getenv('DB_NAME', 'root')
 
     required_folder = os.path.join('/dump', 'user-site-export')
     if not os.path.isdir(required_folder):
         print("Folder does not contain 'user-site-export' folder: {}".format(required_folder))
         raise ValueError
 
-    client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+    client = InfluxDBClient(host=db_host, port=db_port, username=db_user, password=db_password, database=db_name)
     client.create_database(db_name)
     for k in sorted(measurements):
         write_data_for(required_folder, k, client)
     print('All done!')
+
 
 if __name__ == "__main__":
     mainfunc()

@@ -1,5 +1,5 @@
 
-FROM python:3.8-buster
+FROM python:3.11-buster
 
 ENV DB_HOST=localhost
 ENV DB_PORT=8086
@@ -15,7 +15,7 @@ ENV EXPIRES_AT=0
 ENV CALLBACK_URL=http://localhost:8080/
 ENV UNITS=None
 
-RUN pip install fitbit influxdb
+RUN pip3 install -r requirements.txt
 
 ADD api_poller.py fitbit_export_loader.py /
 RUN chmod +x /api_poller.py /fitbit_export_loader.py

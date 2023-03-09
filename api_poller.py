@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from functools import partial
+from dotenv import load_dotenv
 
 from dateutil.parser import parse
 from fitbit import Fitbit
@@ -317,23 +318,25 @@ def append_between_day_series(in_list, cur_marker, interval_max):
 def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fetch):
     datapoints = []
     for one_tuple in intervals_to_fetch:
-        results = None
         while True:
             try:
-                results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
+                if resource in ['calories', 'distance', 'elevation', 'floors', 'steps']:
+                    results = api_client.intraday_time_series(resource, base_date=one_tuple[0])
+                else:
+                    results = api_client.time_series(resource, base_date=one_tuple[0], end_date=one_tuple[1])
                 break
-            except Timeout as ex:
+            except Timeout:
                 logger.warning('Request timed out, retrying in 15 seconds...')
                 time.sleep(15)
             except HTTPServerError as ex:
                 logger.warning('Server returned exception (5xx), retrying in 15 seconds (%s)', ex)
                 time.sleep(15)
-            except HTTPTooManyRequests as ex:
+            except HTTPTooManyRequests:
                 # 150 API calls done, and python-fitbit doesn't provide the retry-after header, so stop trying
                 # and allow the limit to reset, even if it costs us one hour
                 logger.info('API limit reached, sleeping for 3610 seconds!')
                 time.sleep(3610)
-            except Exception as ex:
+            except Exception:
                 logger.exception('Got some unexpected exception')
                 raise
         if not results:
@@ -347,12 +350,13 @@ def fitbit_fetch_datapoints(api_client, meas, series, resource, intervals_to_fet
 
 
 def run_api_poller():
+    load_dotenv()
     cfg_path = try_getenv('CONFIG_PATH')
     db_host = try_getenv('DB_HOST')
     db_port = try_getenv('DB_PORT')
     db_user = try_getenv('DB_USER')
-    db_password = try_getenv('DB_PASSWORD')
-    db_name = try_getenv('DB_NAME')
+    db_password = try_getenv('DB_PASSWORD', 'root')
+    db_name = try_getenv('DB_NAME', 'root')
     redirect_url = try_getenv('CALLBACK_URL')
     units = try_getenv('UNITS', 'it_IT')
 
@@ -407,7 +411,6 @@ def run_api_poller():
         system=Fitbit.METRIC
     )
 
-    user_profile = None
     while True:
         try:
             user_profile = api_client.user_profile_get()
@@ -434,7 +437,7 @@ def run_api_poller():
 
     cur_day = datetime.utcnow()
 
-    db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+    db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
     for one_db in db_client.get_list_database():
         if one_db['name'] == db_name:
             break
@@ -454,7 +457,7 @@ def run_api_poller():
                     # Sleep is special, is its own main category
                     resource = 'sleep'
 
-                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
 
                 key_series = series
                 if isinstance(series_list, dict) and series_list.get(series):
@@ -499,7 +502,7 @@ def run_api_poller():
                         converted_dps.append(create_api_datapoint_meas_series(
                             meas, series, one_d.get('value'), one_d.get('dateTime')))
 
-                db_client = InfluxDBClient(db_host, db_port, db_user, db_password, db_name)
+                db_client = InfluxDBClient(host=db_host, port=db_port, user=db_user, password=db_password, database=db_name)
                 precision = 'h'
                 if meas == 'sleep':
                     precision = 's'
@@ -514,8 +517,6 @@ def run_api_poller():
                 db_client.close()
         logger.info('All series processed, sleeping for 4h')
         time.sleep(3610*4)
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":
